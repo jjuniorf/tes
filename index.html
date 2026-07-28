@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Viewport-fit cover helps it stretch under the notch on modern phones -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>CinePrime Mobile</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -34,7 +33,6 @@
             flex-direction: column;
         }
 
-        /* Hide scrollbars for a clean app look */
         ::-webkit-scrollbar {
             display: none;
         }
@@ -114,7 +112,7 @@
         .hero-banner {
             position: relative;
             width: 100%;
-            height: 65vh; /* Taller on mobile */
+            height: 65vh;
             background-size: cover;
             background-position: center top;
             display: flex;
@@ -182,7 +180,7 @@
             gap: 12px;
             overflow-x: auto;
             scroll-snap-type: x mandatory;
-            padding-right: 16px; /* End padding */
+            padding-right: 16px;
             -webkit-overflow-scrolling: touch;
         }
 
@@ -243,7 +241,7 @@
         /* --- SLIDE-UP DETAIL VIEW --- */
         #view-detail {
             position: fixed;
-            top: 100%; /* Hidden off-screen */
+            top: 100%;
             left: 0;
             width: 100%;
             height: 100vh;
@@ -251,7 +249,7 @@
             z-index: 2000;
             overflow-y: auto;
             transition: top 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-            display: block; /* Always block, controlled by top position */
+            display: block;
         }
 
         #view-detail.active {
@@ -321,7 +319,7 @@
             margin-bottom: 20px;
         }
 
-        /* --- TV EPISODES (Mobile Layout) --- */
+        /* --- TV EPISODES --- */
         .season-selector {
             width: 100%;
             background: var(--bg-surface);
@@ -387,6 +385,10 @@
                 <h2 class="section-title" id="catalog-title" style="margin-bottom: 0;">Catalog</h2>
             </div>
             <div id="catalog-grid"></div>
+            
+            <!-- INFINITE SCROLL ASSETS -->
+            <div id="catalog-loader" style="display: none; padding: 20px; text-align: center; width: 100%; color: var(--text-muted); font-size: 0.9rem;">Loading more...</div>
+            <div id="catalog-sentinel" style="height: 20px; width: 100%;"></div>
         </div>
 
         <!-- SEARCH VIEW -->
@@ -394,7 +396,7 @@
             <div class="search-container">
                 <input type="text" id="search-input" class="search-input" placeholder="Search movies & shows..." autocomplete="off">
             </div>
-            <div id="search-results-grid" id="catalog-grid" style="display: flex; flex-wrap: wrap; gap: 12px; padding: 16px;"></div>
+            <div id="search-results-grid" style="display: flex; flex-wrap: wrap; gap: 12px; padding: 16px;"></div>
         </div>
 
     </main>
@@ -433,9 +435,7 @@
             <h1 class="detail-title" id="detail-title">Loading...</h1>
             <div class="meta-tags" id="detail-tags"></div>
             
-            <div class="action-row" id="detail-actions">
-                <!-- Buttons injected here -->
-            </div>
+            <div class="action-row" id="detail-actions"></div>
 
             <p class="detail-overview" id="detail-overview"></p>
 
@@ -452,11 +452,34 @@
         const IMG_500 = 'https://image.tmdb.org/t/p/w500';
         const IMG_ORIG = 'https://image.tmdb.org/t/p/original';
 
-        const MOVIE_URL = 'https://vidsrc.sbs/embed/movie/{id}';
-        const TV_URL = 'https://vidsrc.sbs/embed/tv/{id}/{season}/{episode}';
+        const MOVIE_URL = 'https://vidsrc-embed.ru/embed/movie/{id}';
+        const TV_URL = 'https://vidsrc-embed.ru/embed/tv/{id}/{season}/{episode}';
 
         let currentActiveTab = 'discover';
         let activeTvId = null;
+
+        // Infinite Scroll State
+        let catalogPage = 1;
+        let totalPages = 1;
+        let isFetching = false;
+        let currentCatalogType = 'movie';
+
+        // --- INTERSECTION OBSERVER FOR INFINITE SCROLL ---
+        const catalogObserver = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                if ((currentActiveTab === 'movies' || currentActiveTab === 'tv') && !isFetching && catalogPage < totalPages) {
+                    catalogPage++;
+                    loadCatalog(currentCatalogType, 'popular', true);
+                }
+            }
+        }, {
+            root: document.getElementById('main-scroll'),
+            rootMargin: '300px'
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            catalogObserver.observe(document.getElementById('catalog-sentinel'));
+        });
 
         // --- NAVIGATION ---
         document.querySelectorAll('.bottom-nav .nav-item').forEach(item => {
@@ -467,13 +490,14 @@
         });
 
         function switchTab(tab) {
+            currentActiveTab = tab;
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             document.getElementById(`nav-${tab}`).classList.add('active');
             
             document.querySelectorAll('.app-main .app-view').forEach(v => v.classList.remove('active'));
             document.getElementById('main-scroll').scrollTo(0,0);
             
-            closeDetail(); // Ensure detail view is closed
+            closeDetail();
 
             if (tab === 'discover') {
                 document.getElementById('view-discover').classList.add('active');
@@ -484,11 +508,11 @@
             } else if (tab === 'movies') {
                 document.getElementById('view-catalog').classList.add('active');
                 document.getElementById('catalog-title').innerText = 'Popular Movies';
-                loadCatalog('movie', 'popular');
+                loadCatalog('movie', 'popular', false);
             } else if (tab === 'tv') {
                 document.getElementById('view-catalog').classList.add('active');
                 document.getElementById('catalog-title').innerText = 'Popular Series';
-                loadCatalog('tv', 'popular');
+                loadCatalog('tv', 'popular', false);
             } else if (tab === 'watchlist') {
                 document.getElementById('view-catalog').classList.add('active');
                 document.getElementById('catalog-title').innerText = 'My List';
@@ -499,7 +523,6 @@
         // --- DATA FETCHING ---
         async function loadDiscover() {
             try {
-                // Fetch Trending General
                 let res = await fetch(`${BASE_URL}/trending/all/day?api_key=${API_KEY}`);
                 let data = await res.json();
                 let items = data.results.filter(i => i.backdrop_path);
@@ -518,7 +541,6 @@
                 `;
                 document.getElementById('trending-row').innerHTML = generateCards(items.slice(1));
 
-                // Fetch Popular TV specifically for the second row
                 res = await fetch(`${BASE_URL}/tv/popular?api_key=${API_KEY}`);
                 data = await res.json();
                 document.getElementById('trending-tv-row').innerHTML = generateCards(data.results.map(i => ({...i, media_type: 'tv'})));
@@ -526,14 +548,39 @@
             } catch(e) { console.error(e); }
         }
 
-        async function loadCatalog(type, cat) {
+        async function loadCatalog(type, cat, append = false) {
+            if (isFetching) return;
+            isFetching = true;
+            currentCatalogType = type;
+
             const grid = document.getElementById('catalog-grid');
-            grid.innerHTML = '<div style="padding:20px; width:100%; text-align:center;">Loading...</div>';
+            const loader = document.getElementById('catalog-loader');
+
+            if (!append) {
+                catalogPage = 1;
+                grid.innerHTML = '';
+            }
+
+            loader.style.display = 'block';
+
             try {
-                const res = await fetch(`${BASE_URL}/${type}/${cat}?api_key=${API_KEY}`);
+                const res = await fetch(`${BASE_URL}/${type}/${cat}?api_key=${API_KEY}&page=${catalogPage}`);
                 const data = await res.json();
-                grid.innerHTML = generateCards(data.results.map(i => ({...i, media_type: type})));
-            } catch(e) { console.error(e); } 
+                totalPages = data.total_pages || 1;
+                
+                const html = generateCards(data.results.map(i => ({...i, media_type: type})));
+                
+                if (append) {
+                    grid.insertAdjacentHTML('beforeend', html);
+                } else {
+                    grid.innerHTML = html;
+                }
+            } catch(e) { 
+                console.error(e); 
+            } finally {
+                isFetching = false;
+                loader.style.display = 'none';
+            }
         }
 
         function generateCards(items) {
@@ -554,7 +601,6 @@
             detailView.classList.add('active');
             detailView.scrollTo(0,0);
             
-            // Reset state
             document.getElementById('player-container').innerHTML = '';
             document.getElementById('detail-backdrop').style.display = 'block';
             document.getElementById('tv-episodes-section').style.display = 'none';
@@ -604,7 +650,7 @@
 
         function closeDetail() {
             document.getElementById('view-detail').classList.remove('active');
-            document.getElementById('player-container').innerHTML = ''; // Stop video playback
+            document.getElementById('player-container').innerHTML = '';
         }
 
         function playVideo(url) {
@@ -681,10 +727,11 @@
         function loadWatchlist() {
             const list = getWatchlist();
             const grid = document.getElementById('catalog-grid');
+            document.getElementById('catalog-loader').style.display = 'none';
             grid.innerHTML = list.length ? generateCards(list) : '<div style="padding:20px; width:100%; text-align:center;">List is empty</div>';
         }
 
-        // Init
+        // Init App
         loadDiscover();
 
     </script>
