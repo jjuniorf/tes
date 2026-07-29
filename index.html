@@ -204,7 +204,7 @@
             display: block;
         }
 
-        /* --- POSTER BADGES --- */
+        /* --- POSTER BADGES & INFO --- */
         .card-rating {
             position: absolute;
             top: 6px;
@@ -228,7 +228,7 @@
 
         .card-tag {
             position: absolute;
-            bottom: 6px;
+            bottom: 38px;
             left: 6px;
             background: rgba(0, 0, 0, 0.75);
             backdrop-filter: blur(4px);
@@ -239,6 +239,20 @@
             text-transform: uppercase;
             color: #fff;
             z-index: 2;
+        }
+
+        .card-info {
+            padding: 6px 8px;
+            background: var(--bg-surface);
+        }
+
+        .card-title-text {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* --- CATALOG GRID --- */
@@ -633,11 +647,15 @@
                 const type = item.media_type || (item.title ? 'movie' : 'tv');
                 const rating = item.vote_average ? item.vote_average.toFixed(1) : 'NR';
                 const tagText = type === 'movie' ? 'Movie' : 'Series';
+                const title = item.title || item.name || '';
                 return `
                     <div class="media-card" onclick="openDetail(${item.id}, '${type}')">
                         <div class="card-rating"><span>★</span> ${rating}</div>
                         <div class="card-tag">${tagText}</div>
                         <img src="${IMG_500}${item.poster_path}" alt="Poster" loading="lazy">
+                        <div class="card-info">
+                            <div class="card-title-text">${title}</div>
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -708,10 +726,8 @@
                 <iframe class="video-player-box" src="${url}" frameborder="0" allowfullscreen></iframe>
             `;
             
-            // Auto scroll up smoothly to the video player
             document.getElementById('view-detail').scrollTo({ top: 0, behavior: 'smooth' });
 
-            // Highlight the active episode card
             if (element) {
                 document.querySelectorAll('.episode-card').forEach(el => el.classList.remove('active-episode'));
                 element.classList.add('active-episode');
