@@ -555,7 +555,7 @@
         // =================================================================
         // ⚙️ CONFIGURE YOUR MOVIE SERVERS HERE
         // =================================================================
-        const MOVIE_SERVERS = [
+       const MOVIE_SERVERS = [
             { name: 'Server 1', url: 'https://vidfast.vc/movie/{id}?autoPlay=true' },
             { name: 'Server 2', url: 'https://vidsrc.wiki/embed/movie/{id}' },
             { name: 'Server 3', url: 'https://vidsrc.sbs/embed/movie/{id}' },
@@ -600,6 +600,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             catalogObserver.observe(document.getElementById('catalog-sentinel'));
+            loadDiscover(); // <--- This loads the home page data automatically on start!
         });
 
         // --- NAVIGATION ---
