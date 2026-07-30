@@ -349,7 +349,7 @@
         .action-row {
             display: flex;
             gap: 12px;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .btn-secondary {
@@ -368,6 +368,44 @@
             background: black;
             border: none;
             margin-bottom: 20px;
+        }
+
+        /* --- SERVERS UI --- */
+        .servers-section {
+            margin-bottom: 24px;
+        }
+        
+        .servers-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .server-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        
+        .server-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 4px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-align: center;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        
+        .server-btn.active-server {
+            background: rgba(46, 204, 113, 0.15);
+            border-color: #2ecc71;
+            color: #2ecc71;
         }
 
         /* --- TV EPISODES --- */
@@ -493,7 +531,11 @@
             <h1 class="detail-title" id="detail-title">Loading...</h1>
             <div class="meta-tags" id="detail-tags"></div>
             
+            <!-- BUTTONS (Play / Add to List) -->
             <div class="action-row" id="detail-actions"></div>
+            
+            <!-- SERVER BUTTONS CONTAINER -->
+            <div id="movie-servers-container" style="display: none;"></div>
 
             <p class="detail-overview" id="detail-overview"></p>
 
@@ -510,7 +552,18 @@
         const IMG_500 = 'https://image.tmdb.org/t/p/w500';
         const IMG_ORIG = 'https://image.tmdb.org/t/p/original';
 
-        const MOVIE_URL = 'https://vidfast.vc/movie/{id}?autoPlay=true';
+        // =================================================================
+        // ⚙️ CONFIGURE YOUR MOVIE SERVERS HERE
+        // Replace the placeholder URLs with your actual video embeds.
+        // Make sure to leave {id} right where the TMDB movie ID should go!
+        // =================================================================
+        const MOVIE_SERVERS = [
+            { name: 'Server 1', url: 'https://vidsrc.sbs/embed/movie/{id}' },
+            { name: 'Server 2', url: 'https://vidfast.vc/movie/{id}?autoPlay=true' },
+            { name: 'Server 3', url: 'https://vidsrc.wiki/embed/movie/{id}' },
+            { name: 'Server 4', url: 'https://vidsrcme.su/embed/movie/{id}' }
+        ];
+
         const TV_URL = 'https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true';
 
         let currentActiveTab = 'discover';
@@ -670,6 +723,7 @@
             document.getElementById('player-container').innerHTML = '';
             document.getElementById('detail-backdrop').style.display = 'block';
             document.getElementById('tv-episodes-section').style.display = 'none';
+            document.getElementById('movie-servers-container').style.display = 'none';
             
             try {
                 const res = await fetch(`${BASE_URL}/${type}/${id}?api_key=${API_KEY}`);
@@ -686,8 +740,26 @@
                 const inList = isInWatchlist(item.id);
                 let actionHtml = '';
 
+                // If Movie, show Play Button and Server Selectors
                 if (type === 'movie') {
-                    actionHtml += `<button class="btn-primary" style="flex:2; width:auto; margin:0;" onclick="playVideo('${MOVIE_URL.replace('{id}', id)}')">▶ Play</button>`;
+                    // Main Play button defaults to Server index 0
+                    actionHtml += `<button class="btn-primary" style="flex:2; width:auto; margin:0;" onclick="playMovieServer(0, ${id})">▶ Play</button>`;
+                    
+                    // Render Server buttons
+                    const serversHtml = `
+                        <div class="servers-section">
+                            <div class="servers-label">Available Servers</div>
+                            <div class="server-grid">
+                                ${MOVIE_SERVERS.map((srv, index) => `
+                                    <button class="server-btn" id="server-btn-${index}" onclick="playMovieServer(${index}, ${id})">
+                                        ${srv.name}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById('movie-servers-container').innerHTML = serversHtml;
+                    document.getElementById('movie-servers-container').style.display = 'block';
                 }
                 
                 actionHtml += `
@@ -697,6 +769,7 @@
                 `;
                 document.getElementById('detail-actions').innerHTML = actionHtml;
 
+                // If TV, show episodes logic
                 if (type === 'tv' && item.seasons) {
                     activeTvId = id;
                     document.getElementById('tv-episodes-section').style.display = 'block';
@@ -717,6 +790,19 @@
         function closeDetail() {
             document.getElementById('view-detail').classList.remove('active');
             document.getElementById('player-container').innerHTML = '';
+        }
+
+        // Handles Playing Movie specifically for the server switching UI
+        function playMovieServer(serverIndex, id) {
+            const server = MOVIE_SERVERS[serverIndex];
+            const url = server.url.replace('{id}', id);
+            
+            // Highlight the active server button
+            document.querySelectorAll('.server-btn').forEach(btn => btn.classList.remove('active-server'));
+            const activeBtn = document.getElementById(`server-btn-${serverIndex}`);
+            if (activeBtn) activeBtn.classList.add('active-server');
+
+            playVideo(url);
         }
 
         function playVideo(url, element = null) {
