@@ -1,6 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>CinePrime Mobile</title>
@@ -455,9 +453,7 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
-    </style>
-</head>
-<body>
+    </style></head><body>
 
     <!-- MAIN SCROLL AREA -->
     <main class="app-main" id="main-scroll">
@@ -541,6 +537,10 @@
 
             <div id="tv-episodes-section" style="display: none;">
                 <select class="season-selector" id="season-selector" onchange="handleSeasonChange(this.value)"></select>
+                
+                <!-- NEW TV SERVERS CONTAINER -->
+                <div id="tv-servers-container" style="display: none; margin-bottom: 16px;"></div>
+                
                 <div id="episodes-list"></div>
             </div>
         </div>
@@ -554,25 +554,30 @@
 
         // =================================================================
         // ⚙️ CONFIGURE YOUR MOVIE SERVERS HERE
-        // Replace the placeholder URLs with your actual video embeds.
-        // Make sure to leave {id} right where the TMDB movie ID should go!
         // =================================================================
         const MOVIE_SERVERS = [
-            { name: 'Server 1', url: 'https://vidsrc-embed.ru/embed/movie/{id}' },
-            { name: 'Server 2', url: 'https://your-server-2.com/embed/movie/{id}' },
-            { name: 'Server 3', url: 'https://your-server-3.com/embed/movie/{id}' },
-            { name: 'Server 4', url: 'https://your-server-4.com/embed/movie/{id}' }
+            { name: 'Server 1', url: 'https://vidfast.vc/movie/{id}?autoPlay=true' },
+            { name: 'Server 2', url: 'https://vidsrc.wiki/embed/movie/{id}' },
+            { name: 'Server 3', url: 'https://vidsrc.sbs/embed/movie/{id}' },
+            { name: 'Server 4', url: 'https://vaplayer.ru/embed/movie/{id}' }
         ];
 
+        // =================================================================
+        // ⚙️ CONFIGURE YOUR TV SERVERS HERE
+        // =================================================================
         const TV_SERVERS = [
-    { name: 'Server 1', url: 'https://vidsrc-embed.ru/embed/tv/{id}/{season}/{episode}' },
-    { name: 'Server 2', url: 'https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true' },
-    { name: 'Server 3', url: 'https://your-server-3.com/embed/tv/{id}/{season}/{episode}' },
-    { name: 'Server 4', url: 'https://your-server-4.com/embed/tv/{id}/{season}/{episode}' }
-];
+            { name: 'Server 1', url: 'https://vidfast.vc/tv/{id}/{season}/{episode}autoPlay=true' },
+            { name: 'Server 2', url: 'https://vidsrc.wiki/embed/tv/{id}/{season}/{episode}' },
+            { name: 'Server 3', url: 'https://vidsrc.sbs/embed/tv/{id}/{season}/{episode}' },
+            { name: 'Server 4', url: 'https://vaplayer.ru/embed/tv/{id}/{season}/{episode}' }
+        ];
 
         let currentActiveTab = 'discover';
         let activeTvId = null;
+        
+        // Added TV State Tracking
+        let currentTvServerIndex = 0;
+        let currentPlayingEpisode = null;
 
         // Infinite Scroll State
         let catalogPage = 1;
@@ -729,6 +734,7 @@
             document.getElementById('detail-backdrop').style.display = 'block';
             document.getElementById('tv-episodes-section').style.display = 'none';
             document.getElementById('movie-servers-container').style.display = 'none';
+            document.getElementById('tv-servers-container').style.display = 'none';
             
             try {
                 const res = await fetch(`${BASE_URL}/${type}/${id}?api_key=${API_KEY}`);
@@ -777,8 +783,27 @@
                 // If TV, show episodes logic
                 if (type === 'tv' && item.seasons) {
                     activeTvId = id;
+                    currentTvServerIndex = 0; // Reset active TV server to the first one
+                    currentPlayingEpisode = null; // Clear playing state
+                    
                     document.getElementById('tv-episodes-section').style.display = 'block';
                     
+                    // Render TV Server buttons
+                    const tvServersHtml = `
+                        <div class="servers-section" style="margin-bottom: 0;">
+                            <div class="servers-label">Available Servers</div>
+                            <div class="server-grid">
+                                ${TV_SERVERS.map((srv, index) => `
+                                    <button class="server-btn ${index === 0 ? 'active-server' : ''}" id="tv-server-btn-${index}" onclick="changeTvServer(${index})">
+                                        ${srv.name}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById('tv-servers-container').innerHTML = tvServersHtml;
+                    document.getElementById('tv-servers-container').style.display = 'block';
+
                     const selector = document.getElementById('season-selector');
                     const validSeasons = item.seasons.filter(s => s.season_number > 0);
                     
@@ -795,19 +820,40 @@
         function closeDetail() {
             document.getElementById('view-detail').classList.remove('active');
             document.getElementById('player-container').innerHTML = '';
+            currentPlayingEpisode = null;
         }
 
-        // Handles Playing Movie specifically for the server switching UI
+        // --- SERVER SWITCHING LOGIC ---
         function playMovieServer(serverIndex, id) {
             const server = MOVIE_SERVERS[serverIndex];
             const url = server.url.replace('{id}', id);
             
-            // Highlight the active server button
-            document.querySelectorAll('.server-btn').forEach(btn => btn.classList.remove('active-server'));
+            document.querySelectorAll('#movie-servers-container .server-btn').forEach(btn => btn.classList.remove('active-server'));
             const activeBtn = document.getElementById(`server-btn-${serverIndex}`);
             if (activeBtn) activeBtn.classList.add('active-server');
 
             playVideo(url);
+        }
+        
+        function changeTvServer(index) {
+            currentTvServerIndex = index;
+            
+            // Highlight the active TV server button
+            document.querySelectorAll('#tv-servers-container .server-btn').forEach(btn => btn.classList.remove('active-server'));
+            const activeBtn = document.getElementById(`tv-server-btn-${index}`);
+            if (activeBtn) activeBtn.classList.add('active-server');
+            
+            // Seamlessly swap the iframe source if an episode is currently playing
+            if (currentPlayingEpisode) {
+                playTvEpisode(currentPlayingEpisode.season, currentPlayingEpisode.episode, currentPlayingEpisode.element);
+            }
+        }
+        
+        function playTvEpisode(seasonNum, episodeNum, element) {
+            currentPlayingEpisode = { season: seasonNum, episode: episodeNum, element: element };
+            const server = TV_SERVERS[currentTvServerIndex];
+            const url = server.url.replace('{id}', activeTvId).replace('{season}', seasonNum).replace('{episode}', episodeNum);
+            playVideo(url, element);
         }
 
         function playVideo(url, element = null) {
@@ -836,10 +882,9 @@
                 
                 listEl.innerHTML = data.episodes.map(ep => {
                     const img = ep.still_path ? IMG_500 + ep.still_path : 'https://via.placeholder.com/300x169?text=No+Image';
-                    const embedUrl = TV_URL.replace('{id}', activeTvId).replace('{season}', seasonNum).replace('{episode}', ep.episode_number);
                     
                     return `
-                        <div class="episode-card" onclick="playVideo('${embedUrl}', this)">
+                        <div class="episode-card" onclick="playTvEpisode(${seasonNum}, ${ep.episode_number}, this)">
                             <img src="${img}" class="episode-thumb">
                             <div class="episode-info">
                                 <h4>${ep.episode_number}. ${ep.name}</h4>
@@ -892,7 +937,7 @@
             const list = getWatchlist();
             const grid = document.getElementById('catalog-grid');
             document.getElementById('catalog-loader').style.display = 'none';
-            grid.innerHTML = list.length ? generateCards(list) : '<div style="padding:20px; width:100%; text-align:center; color:var(--text-muted);">Your list is empty</div>';
+            grid.innerHTML = list.length ? generateCards(list) : '<div style="padding:20px; width:100%; text-align:center;">List is empty</div>';
         }
     </script>
 </body>
