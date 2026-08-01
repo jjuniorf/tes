@@ -559,7 +559,9 @@
             { name: 'Server 1', url: 'https://vidfast.vc/movie/{id}?autoPlay=true' },
             { name: 'Server 2', url: 'https://player.videasy.net/movie/{id}?color=b300ff' },
             { name: 'Server 3', url: 'https://vidsrc.wiki/embed/movie/{id}' },
-            { name: 'Server 4', url: 'https://vidsrc.sbs/embed/movie/{id}' }
+            { name: 'Server 4', url: 'https://vidsrc.sbs/embed/movie/{id}' },
+            { name: 'Server 5', url: 'https://vidrock.ru/embed/movie/{id}' },
+            { name: 'Server 6', url: 'https://embed.filmu.in/movie/{id}' }
         ];
 
         // =================================================================
@@ -569,7 +571,9 @@
             { name: 'Server 1', url: 'https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true' },
             { name: 'Server 2', url: 'https://vidsrc.wiki/embed/tv/{id}/{season}/{episode}' },
             { name: 'Server 3', url: 'https://vidsrc.sbs/embed/tv/{id}/{season}/{episode}' },
-            { name: 'Server 4', url: 'https://vaplayer.ru/embed/tv/{id}/{season}/{episode}' }
+            { name: 'Server 4', url: 'https://vaplayer.ru/embed/tv/{id}/{season}/{episode}' },
+            { name: 'Server 5', url: 'https://vidrock.ru/embed/tv/{id}/{season}/{episode}' },
+            { name: 'Server 6', url: 'https://embed.filmu.in/embed/tv/{id}/{season}/{episode}' }
         ];
 
         let currentActiveTab = 'discover';
@@ -725,6 +729,42 @@
             }).join('');
         }
 
+        // --- WATCHLIST LOGIC ---
+        function getWatchlist() {
+            return JSON.parse(localStorage.getItem('cineprime_watchlist') || '[]');
+        }
+
+        function isInWatchlist(id) {
+            return getWatchlist().some(item => item.id === id);
+        }
+
+        function toggleWatchlist() {
+            if (!window.currentDetailObject) return;
+            let list = getWatchlist();
+            const item = window.currentDetailObject;
+            const index = list.findIndex(i => i.id === item.id);
+            
+            if (index > -1) {
+                list.splice(index, 1);
+            } else {
+                list.push(item);
+            }
+            localStorage.setItem('cineprime_watchlist', JSON.stringify(list));
+            
+            const inList = isInWatchlist(item.id);
+            document.getElementById('mobile-wl-btn').innerText = inList ? '✓ Added' : '➕ List';
+        }
+
+        function loadWatchlist() {
+            const list = getWatchlist();
+            const grid = document.getElementById('catalog-grid');
+            if (list.length === 0) {
+                grid.innerHTML = '<div style="width:100%; text-align:center; padding: 40px 20px; color: var(--text-muted);">Your list is empty.</div>';
+            } else {
+                grid.innerHTML = generateCards(list);
+            }
+        }
+
         // --- SLIDE-UP DETAIL & PLAYER ---
         async function openDetail(id, type) {
             const detailView = document.getElementById('view-detail');
@@ -754,16 +794,14 @@
 
                 // If Movie, show Play Button and Server Selectors
                 if (type === 'movie') {
-                    // Main Play button defaults to Server index 0
                     actionHtml += `<button class="btn-primary" style="flex:2; width:auto; margin:0;" onclick="playMovieServer(0, ${id})">▶ Play</button>`;
                     
-                    // Render Server buttons
                     const serversHtml = `
                         <div class="servers-section">
                             <div class="servers-label">Available Servers</div>
                             <div class="server-grid">
                                 ${MOVIE_SERVERS.map((srv, index) => `
-                                    <button class="server-btn" id="server-btn-${index}" onclick="playMovieServer(${index}, ${id})">
+                                    <button class="server-btn ${index === 0 ? 'active-server' : ''}" id="server-btn-${index}" onclick="playMovieServer(${index}, ${id})">
                                         ${srv.name}
                                     </button>
                                 `).join('')}
@@ -784,12 +822,11 @@
                 // If TV, show episodes logic
                 if (type === 'tv' && item.seasons) {
                     activeTvId = id;
-                    currentTvServerIndex = 0; // Reset active TV server to the first one
-                    currentPlayingEpisode = null; // Clear playing state
+                    currentTvServerIndex = 0;
+                    currentPlayingEpisode = null;
                     
                     document.getElementById('tv-episodes-section').style.display = 'block';
                     
-                    // Render TV Server buttons
                     const tvServersHtml = `
                         <div class="servers-section" style="margin-bottom: 0;">
                             <div class="servers-label">Available Servers</div>
@@ -839,12 +876,10 @@
         function changeTvServer(index) {
             currentTvServerIndex = index;
             
-            // Highlight the active TV server button
             document.querySelectorAll('#tv-servers-container .server-btn').forEach(btn => btn.classList.remove('active-server'));
             const activeBtn = document.getElementById(`tv-server-btn-${index}`);
             if (activeBtn) activeBtn.classList.add('active-server');
             
-            // Seamlessly swap the iframe source if an episode is currently playing
             if (currentPlayingEpisode) {
                 playTvEpisode(currentPlayingEpisode.season, currentPlayingEpisode.episode, currentPlayingEpisode.element);
             }
@@ -872,6 +907,33 @@
             }
         }
 
+        // --- SEARCH INPUT LISTENER ---
+        let searchTimeout = null;
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            const grid = document.getElementById('search-results-grid');
+            
+            if (query.length < 2) {
+                grid.innerHTML = '';
+                return;
+            }
+            
+            searchTimeout = setTimeout(async () => {
+                grid.innerHTML = '<div style="width:100%; text-align:center; padding: 20px;">Searching...</div>';
+                try {
+                    const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(query)}`);
+                    const data = await res.json();
+                    const validItems = data.results.filter(i => (i.media_type === 'movie' || i.media_type === 'tv') && i.poster_path);
+                    grid.innerHTML = validItems.length ? generateCards(validItems) : '<div style="width:100%; text-align:center; padding: 20px;">No results found.</div>';
+                } catch(err) {
+                    console.error(err);
+                    grid.innerHTML = '<div style="width:100%; text-align:center; padding: 20px;">Search failed.</div>';
+                }
+            }, 500);
+        });
+
+        // --- COMPLETED EPISODE FETCHING ---
         async function handleSeasonChange(seasonNum) {
             if(!activeTvId) return;
             const listEl = document.getElementById('episodes-list');
@@ -881,64 +943,27 @@
                 const res = await fetch(`${BASE_URL}/tv/${activeTvId}/season/${seasonNum}?api_key=${API_KEY}`);
                 const data = await res.json();
                 
-                listEl.innerHTML = data.episodes.map(ep => {
-                    const img = ep.still_path ? IMG_500 + ep.still_path : 'https://via.placeholder.com/300x169?text=No+Image';
-                    
-                    return `
-                        <div class="episode-card" onclick="playTvEpisode(${seasonNum}, ${ep.episode_number}, this)">
-                            <img src="${img}" class="episode-thumb">
-                            <div class="episode-info">
-                                <h4>${ep.episode_number}. ${ep.name}</h4>
-                                <p>${ep.overview || 'No description available.'}</p>
+                if (data.episodes && data.episodes.length > 0) {
+                    listEl.innerHTML = data.episodes.map(ep => {
+                        const img = ep.still_path ? IMG_500 + ep.still_path : 'https://via.placeholder.com/120x68/222222/666666?text=No+Image';
+                        const desc = ep.overview ? ep.overview : 'No description available.';
+                        return `
+                            <div class="episode-card" onclick="playTvEpisode(${seasonNum}, ${ep.episode_number}, this)">
+                                <img src="${img}" class="episode-thumb" alt="Episode ${ep.episode_number}" loading="lazy">
+                                <div class="episode-info">
+                                    <h4>${ep.episode_number}. ${ep.name}</h4>
+                                    <p>${desc}</p>
+                                </div>
                             </div>
-                        </div>
-                    `;
-                }).join('');
-            } catch(e) { listEl.innerHTML = 'Error loading episodes.'; }
-        }
-
-        // --- SEARCH & WATCHLIST LOGIC ---
-        let searchTimeout;
-        document.getElementById('search-input').addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            const query = e.target.value.trim();
-            const grid = document.getElementById('search-results-grid');
-            
-            if (!query) { grid.innerHTML = ''; return; }
-
-            searchTimeout = setTimeout(async () => {
-                grid.innerHTML = '<div style="width:100%; text-align:center;">Searching...</div>';
-                try {
-                    const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(query)}`);
-                    const data = await res.json();
-                    const items = data.results.filter(i => i.poster_path && (i.media_type === 'movie' || i.media_type === 'tv'));
-                    
-                    grid.innerHTML = items.length ? generateCards(items) : '<div style="width:100%; text-align:center;">No results</div>';
-                } catch (err) { grid.innerHTML = 'Error.'; }
-            }, 500);
-        });
-
-        function getWatchlist() { return JSON.parse(localStorage.getItem('mobile_watchlist')) || []; }
-        function isInWatchlist(id) { return getWatchlist().some(i => i.id === id); }
-        
-        function toggleWatchlist() {
-            if (!window.currentDetailObject) return;
-            let list = getWatchlist();
-            const item = window.currentDetailObject;
-            const idx = list.findIndex(i => i.id === item.id);
-            
-            if (idx > -1) list.splice(idx, 1);
-            else list.push(item);
-            
-            localStorage.setItem('mobile_watchlist', JSON.stringify(list));
-            document.getElementById('mobile-wl-btn').innerText = isInWatchlist(item.id) ? '✓ Added' : '➕ List';
-        }
-
-        function loadWatchlist() {
-            const list = getWatchlist();
-            const grid = document.getElementById('catalog-grid');
-            document.getElementById('catalog-loader').style.display = 'none';
-            grid.innerHTML = list.length ? generateCards(list) : '<div style="padding:20px; width:100%; text-align:center;">List is empty</div>';
+                        `;
+                    }).join('');
+                } else {
+                    listEl.innerHTML = '<div style="padding: 20px; text-align: center;">No episodes found.</div>';
+                }
+            } catch (error) {
+                console.error(error);
+                listEl.innerHTML = '<div style="padding: 20px; text-align: center;">Failed to load episodes.</div>';
+            }
         }
     </script>
 </body>
